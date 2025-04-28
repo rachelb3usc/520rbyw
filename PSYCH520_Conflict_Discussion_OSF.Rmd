@@ -1,0 +1,107 @@
+---
+title: "PSYCH520_CD"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(fig.width=2, fig.height=2, fig.align = "center")
+```
+
+## Packages
+```{r load-pkg, message=FALSE, warning=FALSE}
+library(tidyverse) # for data cleaning
+library(readr)
+library(psych) 
+library(dplyr)
+library(tidyr)
+library(irr)
+library(boot)
+```
+
+## Load Data
+```{r load-data, message=FALSE}
+cd.pn <- read_csv("~/Documents/Yael/PhD/classes/Spring2025/stats psych 520 measuremennt/Final_Project/spaff.couples.1-100_updated.csv")
+```
+
+## ICC Analyses
+```{r}
+## ICC(3,1) across all second-by-second codes ----
+
+# Drop NAs (i.e., missing seconds) for each parent
+icc_data_mom <- cd.pn %>% select(behav_mom_RA1, behav_mom_RA2) %>% drop_na()
+icc_data_dad <- cd.pn %>% select(behav_dad_RA1, behav_dad_RA2) %>% drop_na()
+
+# Convert behavior codes into numeric codes (necessary for psych::ICC)
+# Define common levels
+levels_union_mom <- union(levels(factor(icc_data_mom$behav_mom_RA1)),
+                          levels(factor(icc_data_mom$behav_mom_RA2)))
+
+levels_union_dad <- union(levels(factor(icc_data_dad$behav_dad_RA1)),
+                          levels(factor(icc_data_dad$behav_dad_RA2)))
+
+# Recode to numeric
+icc_data_mom_num <- data.frame(
+  Rater1 = as.numeric(factor(icc_data_mom$behav_mom_RA1, levels = levels_union_mom)),
+  Rater2 = as.numeric(factor(icc_data_mom$behav_mom_RA2, levels = levels_union_mom))
+)
+
+icc_data_dad_num <- data.frame(
+  Rater1 = as.numeric(factor(icc_data_dad$behav_dad_RA1, levels = levels_union_dad)),
+  Rater2 = as.numeric(factor(icc_data_dad$behav_dad_RA2, levels = levels_union_dad))
+)
+
+# Compute ICC(3,1) for moms and dads
+icc_mom <- psych::ICC(icc_data_mom_num)
+icc_dad <- psych::ICC(icc_data_dad_num)
+
+# Print ICC(3,1) row
+cat("Mom ICC(3,1):\n")
+print(icc_mom$results[3,]) # third row = ICC(3,1)
+
+cat("\nDad ICC(3,1):\n")
+print(icc_dad$results[3,])
+
+
+```
+# Compare ICCs between moms and dads using Fisher's z transformation & CI
+```{r}
+
+# Gather variables
+icc_mom_val <- icc_mom$results[3,2]
+icc_dad_val <- icc_dad$results[3,2]
+n_mom <- 96
+n_dad <- 96
+
+# Fisher Z transformations
+z_mom <- 0.5 * log((1 + icc_mom_val) / (1 - icc_mom_val))
+z_dad <- 0.5 * log((1 + icc_dad_val) / (1 - icc_dad_val))
+
+# Standard errors
+se_mom <- 1 / sqrt(n_mom - 3)
+se_dad <- 1 / sqrt(n_dad - 3)
+
+# Z test for difference
+z_diff <- (z_mom - z_dad) / sqrt(se_mom^2 + se_dad^2)
+p_value <- 2 * (1 - pnorm(abs(z_diff)))
+
+# Output
+cat("z =", round(z_diff, 2), "\n")
+cat("p-value =", round(p_value, 4), "\n")
+
+
+# Standard error of the difference
+se_diff <- sqrt(se_mom^2 + se_dad^2)
+
+# 95% Confidence Interval on the Fisher Z scale
+lower_z <- (z_mom - z_dad) - 1.96 * se_diff
+upper_z <- (z_mom - z_dad) + 1.96 * se_diff
+
+# Now back-transform the lower and upper bounds to the ICC (correlation) scale
+lower_r <- (exp(2 * lower_z) - 1) / (exp(2 * lower_z) + 1)
+upper_r <- (exp(2 * upper_z) - 1) / (exp(2 * upper_z) + 1)
+
+# Output
+cat("95% CI for difference in ICCs: [", round(lower_r, 3), ",", round(upper_r, 3), "]\n") 
+
+```
+
