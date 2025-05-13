@@ -1,6 +1,5 @@
 ---
 title: "PSYCH520_CD"
-name: Rachel Bernstein and Yael Waizman
 output: html_document
 ---
 
@@ -10,7 +9,7 @@ knitr::opts_chunk$set(fig.width=2, fig.height=2, fig.align = "center")
 
 ## Packages
 ```{r load-pkg, message=FALSE, warning=FALSE}
-library(tidyverse) # for data cleaning
+library(tidyverse) 
 library(readr)
 library(psych) 
 library(dplyr)
@@ -24,74 +23,62 @@ library(boot)
 cd.pn <- read_csv("~/Documents/Yael/PhD/classes/Spring2025/stats psych 520 measuremennt/Final_Project/spaff.couples.1-100_updated.csv")
 ```
 
-## ICC Analyses
+## Cohen's Kappa Analyes
 ```{r}
-## ICC(3,1) across all second-by-second codes ----
+# Compute Cohen's Kappa for mom
+mom_kappa <- kappa2(cd.pn[, c("behav_mom_RA1", "behav_mom_RA2")])
+print(mom_kappa)
+kappa_mom_val <- mom_kappa$value
+z_mom <- mom_kappa$statistic
 
-# Drop NAs (i.e., missing seconds) for each parent
-icc_data_mom <- cd.pn %>% select(behav_mom_RA1, behav_mom_RA2) %>% drop_na()
-icc_data_dad <- cd.pn %>% select(behav_dad_RA1, behav_dad_RA2) %>% drop_na()
+# Compute Cohen's Kappa for dad
+dad_kappa <- kappa2(cd.pn[, c("behav_dad_RA1", "behav_dad_RA2")])
+print(dad_kappa)
+kappa_dad_val <- dad_kappa$value
+z_dad <- dad_kappa$statistic
 
-# Convert behavior codes into numeric codes 
-levels_union_mom <- union(levels(factor(icc_data_mom$behav_mom_RA1)),
-                          levels(factor(icc_data_mom$behav_mom_RA2)))
+# Compute Standard Error
+se_mom <- kappa_mom_val / z_mom
+se_dad <- kappa_dad_val / z_dad
 
-levels_union_dad <- union(levels(factor(icc_data_dad$behav_dad_RA1)),
-                          levels(factor(icc_data_dad$behav_dad_RA2)))
+# 95% Confidence Intervals
+ci_mom_lower <- kappa_mom_val - 1.96 * se_mom
+ci_mom_upper <- kappa_mom_val + 1.96 * se_mom
 
-icc_data_mom_num <- data.frame(
-  Rater1 = as.numeric(factor(icc_data_mom$behav_mom_RA1, levels = levels_union_mom)),
-  Rater2 = as.numeric(factor(icc_data_mom$behav_mom_RA2, levels = levels_union_mom))
-)
+ci_dad_lower <- kappa_dad_val - 1.96 * se_dad
+ci_dad_upper <- kappa_dad_val + 1.96 * se_dad
 
-icc_data_dad_num <- data.frame(
-  Rater1 = as.numeric(factor(icc_data_dad$behav_dad_RA1, levels = levels_union_dad)),
-  Rater2 = as.numeric(factor(icc_data_dad$behav_dad_RA2, levels = levels_union_dad))
-)
-
-# Compute ICC(3,1) for moms and dads
-icc_mom <- psych::ICC(icc_data_mom_num)
-icc_dad <- psych::ICC(icc_data_dad_num)
-
-cat("Mom ICC(3,1):\n")
-print(icc_mom$results[3,]) # third row = ICC(3,1)
-cat("\nDad ICC(3,1):\n")
-print(icc_dad$results[3,])
-
+cat("Mom Kappa 95% CI: [", round(ci_mom_lower, 3), ",", round(ci_mom_upper, 3), "]\n")
+cat("Dad Kappa 95% CI: [", round(ci_dad_lower, 3), ",", round(ci_dad_upper, 3), "]\n")
 
 ```
-# Compare ICCs between moms and dads using Fisher's z transformation & CI
-```{r}
 
-icc_mom_val <- icc_mom$results[3,2]
-icc_dad_val <- icc_dad$results[3,2]
+## Compare Mom's vs. Dad's Cohen's Kappa 
+```{r}
+# Set sample sizes
 n_mom <- 96
 n_dad <- 96
 
 # Fisher Z transformations
-z_mom <- 0.5 * log((1 + icc_mom_val) / (1 - icc_mom_val))
-z_dad <- 0.5 * log((1 + icc_dad_val) / (1 - icc_dad_val))
+z_mom_fisher <- 0.5 * log((1 + kappa_mom_val) / (1 - kappa_mom_val))
+z_dad_fisher <- 0.5 * log((1 + kappa_dad_val) / (1 - kappa_dad_val))
 
-# Standard errors
-se_mom <- 1 / sqrt(n_mom - 3)
-se_dad <- 1 / sqrt(n_dad - 3)
+# Standard errors for Fisher Z
+se_mom_fisher <- 1 / sqrt(n_mom - 3)
+se_dad_fisher <- 1 / sqrt(n_dad - 3)
 
 # Z test for difference
-z_diff <- (z_mom - z_dad) / sqrt(se_mom^2 + se_dad^2)
+z_diff <- (z_mom_fisher - z_dad_fisher) / sqrt(se_mom_fisher^2 + se_dad_fisher^2)
 p_value <- 2 * (1 - pnorm(abs(z_diff)))
 cat("z =", round(z_diff, 2), "\n")
 cat("p-value =", round(p_value, 4), "\n")
 
-# Standard error of the difference
-se_diff <- sqrt(se_mom^2 + se_dad^2)
+# 95% CI for difference
+se_diff <- sqrt(se_mom_fisher^2 + se_dad_fisher^2)
+lower_z <- (z_mom_fisher - z_dad_fisher) - 1.96 * se_diff
+upper_z <- (z_mom_fisher - z_dad_fisher) + 1.96 * se_diff
+lower_kappa <- (exp(2 * lower_z) - 1) / (exp(2 * lower_z) + 1)
+upper_kappa <- (exp(2 * upper_z) - 1) / (exp(2 * upper_z) + 1)
 
-# 95% Confidence Interval on the Fisher Z scale
-lower_z <- (z_mom - z_dad) - 1.96 * se_diff
-upper_z <- (z_mom - z_dad) + 1.96 * se_diff
-lower_r <- (exp(2 * lower_z) - 1) / (exp(2 * lower_z) + 1)
-upper_r <- (exp(2 * upper_z) - 1) / (exp(2 * upper_z) + 1)
-
-cat("95% CI for difference in ICCs: [", round(lower_r, 3), ",", round(upper_r, 3), "]\n") 
-
+cat("95% CI for difference in Kappas: [", round(lower_kappa, 3), ",", round(upper_kappa, 3), "]\n")
 ```
-
