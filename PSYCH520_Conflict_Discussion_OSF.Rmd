@@ -28,12 +28,15 @@ cd.pn <- read_csv("~/Documents/Yael/PhD/classes/Spring2025/stats psych 520 measu
 # Compute Cohen's Kappa for mom
 mom_kappa <- kappa2(cd.pn[, c("behav_mom_RA1", "behav_mom_RA2")])
 print(mom_kappa)
-kappa_mom_val <- mom_kappa$value
-z_mom <- mom_kappa$statistic
 
 # Compute Cohen's Kappa for dad
 dad_kappa <- kappa2(cd.pn[, c("behav_dad_RA1", "behav_dad_RA2")])
 print(dad_kappa)
+
+# Extract values
+kappa_mom_val <- mom_kappa$value
+z_mom <- mom_kappa$statistic
+
 kappa_dad_val <- dad_kappa$value
 z_dad <- dad_kappa$statistic
 
@@ -48,37 +51,44 @@ ci_mom_upper <- kappa_mom_val + 1.96 * se_mom
 ci_dad_lower <- kappa_dad_val - 1.96 * se_dad
 ci_dad_upper <- kappa_dad_val + 1.96 * se_dad
 
+# Print
 cat("Mom Kappa 95% CI: [", round(ci_mom_lower, 3), ",", round(ci_mom_upper, 3), "]\n")
 cat("Dad Kappa 95% CI: [", round(ci_dad_lower, 3), ",", round(ci_dad_upper, 3), "]\n")
 
 ```
 
-## Compare Mom's vs. Dad's Cohen's Kappa 
+## Bootstrapping Analysis
 ```{r}
-# Set sample sizes
-n_mom <- 96
-n_dad <- 96
+# Set bootstrap samples
+set.seed(123)
+B <- 1000
 
-# Fisher Z transformations
-z_mom_fisher <- 0.5 * log((1 + kappa_mom_val) / (1 - kappa_mom_val))
-z_dad_fisher <- 0.5 * log((1 + kappa_dad_val) / (1 - kappa_dad_val))
+dyad_ids <- unique(cd.pn$id)
+n_dyads <- length(dyad_ids)
 
-# Standard errors for Fisher Z
-se_mom_fisher <- 1 / sqrt(n_mom - 3)
-se_dad_fisher <- 1 / sqrt(n_dad - 3)
+mom_kappas <- numeric(B)
+dad_kappas <- numeric(B)
 
-# Z test for difference
-z_diff <- (z_mom_fisher - z_dad_fisher) / sqrt(se_mom_fisher^2 + se_dad_fisher^2)
-p_value <- 2 * (1 - pnorm(abs(z_diff)))
-cat("z =", round(z_diff, 2), "\n")
-cat("p-value =", round(p_value, 4), "\n")
+for (i in 1:B) {
+  sampled_ids <- sample(dyad_ids, size = n_dyads, replace = TRUE)
+  sample_data <- lapply(sampled_ids, function(x) filter(cd.pn, id == x)) %>%
+    bind_rows()
+  # Compute Kappa
+  mom_kappas[i] <- kappa2(sample_data[, c("behav_mom_RA1", "behav_mom_RA2")])$value
+  dad_kappas[i] <- kappa2(sample_data[, c("behav_dad_RA1", "behav_dad_RA2")])$value
+}
 
-# 95% CI for difference
-se_diff <- sqrt(se_mom_fisher^2 + se_dad_fisher^2)
-lower_z <- (z_mom_fisher - z_dad_fisher) - 1.96 * se_diff
-upper_z <- (z_mom_fisher - z_dad_fisher) + 1.96 * se_diff
-lower_kappa <- (exp(2 * lower_z) - 1) / (exp(2 * lower_z) + 1)
-upper_kappa <- (exp(2 * upper_z) - 1) / (exp(2 * upper_z) + 1)
+# Compute CI
+mom_ci <- quantile(mom_kappas, probs = c(0.025, 0.975))
+dad_ci <- quantile(dad_kappas, probs = c(0.025, 0.975))
+mom_mean <- mean(mom_kappas)
+dad_mean <- mean(dad_kappas)
 
-cat("95% CI for difference in Kappas: [", round(lower_kappa, 3), ",", round(upper_kappa, 3), "]\n")
+# Differences
+diff_kappas <- mom_kappas - dad_kappas
+diff_ci <- quantile(diff_kappas, probs = c(0.025, 0.975))
+diff_mean <- mean(diff_kappas)
+cat(round(mom_mean, 3), "95% CI:", round(mom_ci[1], 3), "-", round(mom_ci[2], 3), "\n")
+cat(round(dad_mean, 3), "95% CI:", round(dad_ci[1], 3), "-", round(dad_ci[2], 3), "\n")
+cat("Diff:", round(diff_mean, 3), "95% CI:", round(diff_ci[1], 3), "-", round(diff_ci[2], 3), "\n")
 ```
